@@ -1,3 +1,4 @@
+use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 #[derive(Default)]
@@ -51,7 +52,18 @@ impl TokenRequestBuilder {
         self
     }
 
-    pub fn build(&self) -> reqwest::RequestBuilder {
+    pub fn build(&self) -> Result<reqwest::RequestBuilder> {
+        if self.client_id.is_empty()
+            || self.client_secret.is_empty()
+            || self.domain.is_empty()
+            || self.redirect_uri.is_empty()
+            || self.region.is_empty()
+        {
+            anyhow::bail!(
+                "client_id, client_secret, domain, redirect_uri, and region must not be empty"
+            );
+        }
+
         let url = format!(
             "https://{}.auth.{}.amazoncognito.com/oauth2/token",
             self.domain, self.region
@@ -59,7 +71,7 @@ impl TokenRequestBuilder {
 
         let basic = STANDARD.encode(format!("{}:{}", self.client_id, self.client_secret));
 
-        reqwest::Client::new()
+        Ok(reqwest::Client::new()
             .post(url)
             .header("Authorization", format!("Basic {}", basic))
             .header("Content-Type", "application/x-www-form-urlencoded")
@@ -68,6 +80,6 @@ impl TokenRequestBuilder {
                 ("code", &self.code),
                 ("grant_type", &"authorization_code".to_string()),
                 ("redirect_uri", &self.redirect_uri),
-            ])
+            ]))
     }
 }

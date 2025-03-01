@@ -60,7 +60,7 @@ pub async fn callback(
         .domain(&data.domain)
         .redirect_uri(&data.redirect_uri)
         .region(&data.region)
-        .build()
+        .build()?
         .send()
         .await?;
     let json: serde_json::Value = res.json().await?;

@@ -2283,6 +2283,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 name = "token"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "base64 0.22.1",
  "reqwest",
 ]
@@ -2490,6 +2491,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 name = "validation"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "jsonwebtoken",
 ]
 

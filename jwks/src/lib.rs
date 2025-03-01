@@ -34,6 +34,10 @@ impl JwksBuilder {
     }
 
     pub async fn build(self) -> Result<Jwks> {
+        if self.region.is_empty() || self.user_pool_id.is_empty() {
+            anyhow::bail!("region and user_pool_id must not be empty");
+        }
+
         let url = format!(
             "https://cognito-idp.{}.amazonaws.com/{}/.well-known/jwks.json",
             self.region, self.user_pool_id

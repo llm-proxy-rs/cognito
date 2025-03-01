@@ -49,6 +49,10 @@ impl JwtDecoder {
     }
 
     pub async fn decode(&self, jwt: &str) -> Result<TokenData<Claims>> {
+        if self.client_id.is_empty() || self.region.is_empty() || self.user_pool_id.is_empty() {
+            anyhow::bail!("client_id, region, and user_pool_id must not be empty");
+        }
+
         let kid = get_kid_from_jwt(jwt)?;
         let jwks = Jwks::builder()
             .region(&self.region)
@@ -62,7 +66,7 @@ impl JwtDecoder {
             .client_id(&self.client_id)
             .region(&self.region)
             .user_pool_id(&self.user_pool_id)
-            .build();
+            .build()?;
         let token_data = decode::<Claims>(jwt, &jwk_to_decoding_key(&jwk)?, &validation)?;
         Ok(token_data)
     }

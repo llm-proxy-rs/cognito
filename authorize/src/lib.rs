@@ -67,6 +67,14 @@ impl AuthorizeUrlBuilder {
     }
 
     pub fn build(self) -> Result<(Url, CsrfToken, String, PkceCodeVerifier)> {
+        if self.client_id.is_empty()
+            || self.domain.is_empty()
+            || self.redirect_uri.is_empty()
+            || self.region.is_empty()
+        {
+            anyhow::bail!("client_id, domain, redirect_uri, and region must not be empty");
+        }
+
         let mut url = Url::parse(&format!(
             "https://{}.auth.{}.amazoncognito.com/oauth2/authorize",
             self.domain, self.region

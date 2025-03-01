@@ -1,3 +1,4 @@
+use anyhow::Result;
 use jsonwebtoken::{Algorithm, Validation};
 
 #[derive(Default)]
@@ -27,7 +28,11 @@ impl ValidationBuilder {
         self
     }
 
-    pub fn build(self) -> Validation {
+    pub fn build(self) -> Result<Validation> {
+        if self.client_id.is_empty() || self.region.is_empty() || self.user_pool_id.is_empty() {
+            anyhow::bail!("client_id, region, and user_pool_id must not be empty");
+        }
+
         let issuer = format!(
             "https://cognito-idp.{}.amazonaws.com/{}",
             self.region, self.user_pool_id
@@ -36,6 +41,6 @@ impl ValidationBuilder {
         validation.set_audience(&[&self.client_id]);
         validation.set_issuer(&[&issuer]);
         validation.set_required_spec_claims(&["aud", "exp", "iss"]);
-        validation
+        Ok(validation)
     }
 }
