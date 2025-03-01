@@ -1,0 +1,11 @@
+[package]
+name = "jwt"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.96"
+jsonwebtoken = "9.3.1"
+jwks = { path = "../jwks" }
+serde = "1.0.218"
+validation = { path = "../validation" }

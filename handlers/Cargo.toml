@@ -1,0 +1,15 @@
+[package]
+name = "handlers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix-session = "0.10.1"
+actix-web = "4.9.0"
+anyhow = "1.0.96"
+authorize = { path = "../authorize" }
+jwt = { path = "../jwt" }
+oauth2 = "5.0.0"
+reqwest = { version = "0.12.12", features = ["json"] }
+serde_json = "1.0.139"
+token = { path = "../token" }
