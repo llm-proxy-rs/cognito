@@ -8,8 +8,16 @@ actix-session = "0.10.1"
 actix-web = "4.9.0"
 anyhow = "1.0.96"
 authorize = { path = "../authorize" }
+chrono = "0.4.40"
 jwt = { path = "../jwt" }
 oauth2 = "5.0.0"
 reqwest = { version = "0.12.12", features = ["json"] }
+serde = "1.0.218"
 serde_json = "1.0.139"
 token = { path = "../token" }
+
+[dev-dependencies]
+actix-session = { version = "0.10.1", features = ["cookie-session"] }
+dotenv = "0.15.0"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

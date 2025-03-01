@@ -6,8 +6,8 @@ pub struct TokenRequestBuilder {
     pub client_secret: String,
     pub code_verifier: String,
     pub code: String,
+    pub domain: String,
     pub redirect_uri: String,
-    pub user_pool_id: String,
     pub region: String,
 }
 
@@ -36,13 +36,13 @@ impl TokenRequestBuilder {
         self
     }
 
-    pub fn redirect_uri(mut self, redirect_uri: &str) -> Self {
-        self.redirect_uri = redirect_uri.to_string();
+    pub fn domain(mut self, domain: &str) -> Self {
+        self.domain = domain.to_string();
         self
     }
 
-    pub fn user_pool_id(mut self, user_pool_id: &str) -> Self {
-        self.user_pool_id = user_pool_id.to_string();
+    pub fn redirect_uri(mut self, redirect_uri: &str) -> Self {
+        self.redirect_uri = redirect_uri.to_string();
         self
     }
 
@@ -54,7 +54,7 @@ impl TokenRequestBuilder {
     pub fn build(&self) -> reqwest::RequestBuilder {
         let url = format!(
             "https://{}.auth.{}.amazoncognito.com/oauth2/token",
-            self.user_pool_id, self.region
+            self.domain, self.region
         );
 
         let basic = STANDARD.encode(format!("{}:{}", self.client_id, self.client_secret));

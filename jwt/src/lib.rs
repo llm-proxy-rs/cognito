@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::TimeZone;
 use jsonwebtoken::{TokenData, decode, decode_header};
 use jwks::{Jwks, jwk_to_decoding_key};
 use serde::Deserialize;
@@ -6,8 +7,9 @@ use validation::ValidationBuilder;
 
 #[derive(Deserialize)]
 pub struct Claims {
-    pub aud: String,
-    pub iss: String,
+    pub email: String,
+    pub iat: i64,
+    pub nonce: String,
     pub sub: String,
     pub token_use: String,
 }
@@ -64,4 +66,24 @@ impl JwtDecoder {
         let token_data = decode::<Claims>(jwt, &jwk_to_decoding_key(&jwk)?, &validation)?;
         Ok(token_data)
     }
+}
+
+pub fn validate_claims(
+    claims: &Claims,
+    nonce: &str,
+    issued_threshold: chrono::Duration,
+) -> Result<()> {
+    let current_time = chrono::Utc::now();
+    let iat = chrono::Utc
+        .timestamp_opt(claims.iat, 0)
+        .single()
+        .ok_or(anyhow::anyhow!("Invalid 'iat' timestamp in claims"))?;
+    if iat < (current_time - issued_threshold)
+        || claims.nonce != nonce
+        || claims.sub.is_empty()
+        || claims.token_use != "id"
+    {
+        anyhow::bail!("Invalid claims in token");
+    }
+    Ok(())
 }

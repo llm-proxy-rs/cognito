@@ -1,29 +1,32 @@
 use actix_session::Session;
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, web};
 use anyhow::Result;
 use authorize::AuthorizeUrlBuilder;
-use jwt::JwtDecoder;
+use jwt::{JwtDecoder, validate_claims};
 use oauth2::PkceCodeVerifier;
+use serde::Deserialize;
 use token::TokenRequestBuilder;
 
 pub struct AppState {
     pub client_id: String,
     pub client_secret: String,
+    pub domain: String,
     pub region: String,
     pub user_pool_id: String,
     pub redirect_uri: String,
 }
 
+#[derive(Deserialize)]
 pub struct CallbackRequest {
     pub code: String,
     pub state: String,
 }
 
-pub async fn login(data: web::Data<AppState>, session: Session) -> Result<impl Responder> {
+pub async fn login(data: web::Data<AppState>, session: Session) -> Result<HttpResponse> {
     let authorize_url_builder = AuthorizeUrlBuilder::new()
         .client_id(&data.client_id)
+        .domain(&data.domain)
         .region(&data.region)
-        .user_pool_id(&data.user_pool_id)
         .redirect_uri(&data.redirect_uri);
     let (authorize_url, csrf_token, nonce, pkce_code_verifier) = authorize_url_builder.build()?;
     session.insert("csrf_token", csrf_token)?;
@@ -35,10 +38,16 @@ pub async fn login(data: web::Data<AppState>, session: Session) -> Result<impl R
 }
 
 pub async fn callback(
-    web::Query(info): web::Query<CallbackRequest>,
     data: web::Data<AppState>,
     session: Session,
-) -> Result<impl Responder> {
+    web::Query(info): web::Query<CallbackRequest>,
+) -> Result<HttpResponse> {
+    let csrf_token: String = session
+        .get("csrf_token")?
+        .ok_or_else(|| anyhow::anyhow!("CSRF token not found in session"))?;
+    if info.state != csrf_token {
+        anyhow::bail!("Invalid state: CSRF token does not match");
+    }
     let pkce_code_verifier = session
         .get::<PkceCodeVerifier>("pkce_code_verifier")?
         .ok_or_else(|| anyhow::anyhow!("PKCE code verifier not found in session"))?;
@@ -48,8 +57,8 @@ pub async fn callback(
         .client_secret(&data.client_secret)
         .code_verifier(code_verifier)
         .code(&info.code)
+        .domain(&data.domain)
         .redirect_uri(&data.redirect_uri)
-        .user_pool_id(&data.user_pool_id)
         .region(&data.region)
         .build()
         .send()
@@ -62,7 +71,15 @@ pub async fn callback(
         .user_pool_id(&data.user_pool_id)
         .decode(id_token)
         .await?;
-    let _claims = token_data.claims;
+    let claims = &token_data.claims;
+    let nonce = session
+        .remove_as::<String>("nonce")
+        .ok_or_else(|| anyhow::anyhow!("Nonce not found in session"))?
+        .map_err(anyhow::Error::msg)?;
+    let issued_threshold = chrono::Duration::minutes(5);
+    validate_claims(claims, &nonce, issued_threshold)?;
+    session.insert("email", claims.email.clone())?;
+    session.insert("sub", claims.sub.clone())?;
     Ok(HttpResponse::Found()
         .append_header(("Location", "/"))
         .finish())

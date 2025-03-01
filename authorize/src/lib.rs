@@ -8,11 +8,11 @@ pub struct AuthorizeUrlBuilder {
     pub client_id: String,
     pub code_challenge: PkceCodeChallenge,
     pub csrf_token: CsrfToken,
+    pub domain: String,
     pub nonce: String,
     pub pkce_code_verifier: PkceCodeVerifier,
     pub redirect_uri: String,
     pub region: String,
-    pub user_pool_id: String,
 }
 
 impl Default for AuthorizeUrlBuilder {
@@ -27,11 +27,11 @@ impl Default for AuthorizeUrlBuilder {
             client_id: String::new(),
             code_challenge: pkce_code_challenge,
             csrf_token: CsrfToken::new_random(),
+            domain: String::new(),
             nonce,
             pkce_code_verifier,
             redirect_uri: String::new(),
             region: String::new(),
-            user_pool_id: String::new(),
         }
     }
 }
@@ -46,13 +46,13 @@ impl AuthorizeUrlBuilder {
         self
     }
 
-    pub fn region(mut self, region: &str) -> Self {
-        self.region = region.to_string();
+    pub fn domain(mut self, domain: &str) -> Self {
+        self.domain = domain.to_string();
         self
     }
 
-    pub fn user_pool_id(mut self, user_pool_id: &str) -> Self {
-        self.user_pool_id = user_pool_id.to_string();
+    pub fn region(mut self, region: &str) -> Self {
+        self.region = region.to_string();
         self
     }
 
@@ -69,7 +69,7 @@ impl AuthorizeUrlBuilder {
     pub fn build(self) -> Result<(Url, CsrfToken, String, PkceCodeVerifier)> {
         let mut url = Url::parse(&format!(
             "https://{}.auth.{}.amazoncognito.com/oauth2/authorize",
-            self.user_pool_id, self.region
+            self.domain, self.region
         ))?;
 
         url.query_pairs_mut()
