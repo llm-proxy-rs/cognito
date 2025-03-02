@@ -109,15 +109,15 @@ async fn main() -> anyhow::Result<()> {
 
     let session_store = MemoryStore::default();
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_secure(false)
-        .with_same_site(SameSite::Lax);
+        .with_same_site(SameSite::Lax)
+        .with_secure(false);
 
     let app = Router::new()
+        .layer(session_layer)
         .route("/", get(index))
         .route("/callback", get(callback))
         .route("/login", get(login))
         .route("/logout", get(logout))
-        .layer(session_layer)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
