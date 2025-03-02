@@ -75,11 +75,11 @@ async fn login(session: Session, state: State<AppState>) -> Result<Response, App
 }
 
 async fn callback(
-    info: Query<CallbackQuery>,
+    query: Query<CallbackQuery>,
     session: Session,
     state: State<AppState>,
 ) -> Result<Response, AppError> {
-    Ok(handlers::callback(info, session, state).await?)
+    Ok(handlers::callback(query, session, state).await?)
 }
 
 #[tokio::main]
