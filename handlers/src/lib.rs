@@ -31,10 +31,10 @@ pub async fn login(session: Session, State(state): State<AppState>) -> Result<Re
         .region(&state.region)
         .redirect_uri(&state.redirect_uri);
     let (authorize_url, csrf_token, nonce, pkce_code_verifier) = authorize_url_builder.build()?;
-    session.insert("csrf_token", csrf_token).await?;
-    session.insert("nonce", nonce).await?;
+    session.insert("csrf_token", &csrf_token).await?;
+    session.insert("nonce", &nonce).await?;
     session
-        .insert("pkce_code_verifier", pkce_code_verifier)
+        .insert("pkce_code_verifier", &pkce_code_verifier)
         .await?;
     Ok(Redirect::to(authorize_url.as_str()).into_response())
 }
@@ -82,7 +82,7 @@ pub async fn callback(
         .ok_or_else(|| anyhow::anyhow!("Nonce not found in session"))?;
     let issued_threshold = chrono::Duration::minutes(5);
     validate_claims(claims, &nonce, issued_threshold)?;
-    session.insert("email", claims.email.clone()).await?;
-    session.insert("sub", claims.sub.clone()).await?;
+    session.insert("email", &claims.email).await?;
+    session.insert("sub", &claims.sub).await?;
     Ok(Redirect::to("/").into_response())
 }
