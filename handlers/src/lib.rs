@@ -1,12 +1,14 @@
-use actix_session::Session;
-use actix_web::{HttpResponse, web};
 use anyhow::Result;
 use authorize::AuthorizeUrlBuilder;
+use axum::extract::{Query, State};
+use axum::response::{IntoResponse, Redirect, Response};
 use jwt::{JwtDecoder, validate_claims};
 use oauth2::PkceCodeVerifier;
 use serde::Deserialize;
 use token::TokenRequestBuilder;
+use tower_sessions::Session;
 
+#[derive(Clone)]
 pub struct AppState {
     pub client_id: String,
     pub client_secret: String,
@@ -17,70 +19,70 @@ pub struct AppState {
 }
 
 #[derive(Deserialize)]
-pub struct CallbackRequest {
+pub struct CallbackQuery {
     pub code: String,
     pub state: String,
 }
 
-pub async fn login(data: web::Data<AppState>, session: Session) -> Result<HttpResponse> {
+pub async fn login(session: Session, State(state): State<AppState>) -> Result<Response> {
     let authorize_url_builder = AuthorizeUrlBuilder::new()
-        .client_id(&data.client_id)
-        .domain(&data.domain)
-        .region(&data.region)
-        .redirect_uri(&data.redirect_uri);
+        .client_id(&state.client_id)
+        .domain(&state.domain)
+        .region(&state.region)
+        .redirect_uri(&state.redirect_uri);
     let (authorize_url, csrf_token, nonce, pkce_code_verifier) = authorize_url_builder.build()?;
-    session.insert("csrf_token", csrf_token)?;
-    session.insert("nonce", nonce)?;
-    session.insert("pkce_code_verifier", pkce_code_verifier)?;
-    Ok(HttpResponse::Found()
-        .append_header(("Location", authorize_url.to_string()))
-        .finish())
+    session.insert("csrf_token", &csrf_token).await?;
+    session.insert("nonce", &nonce).await?;
+    session
+        .insert("pkce_code_verifier", &pkce_code_verifier)
+        .await?;
+    Ok(Redirect::to(authorize_url.as_str()).into_response())
 }
 
 pub async fn callback(
-    data: web::Data<AppState>,
+    Query(query): Query<CallbackQuery>,
     session: Session,
-    web::Query(info): web::Query<CallbackRequest>,
-) -> Result<HttpResponse> {
+    State(state): State<AppState>,
+) -> Result<Response> {
     let csrf_token: String = session
-        .get("csrf_token")?
+        .get("csrf_token")
+        .await?
         .ok_or_else(|| anyhow::anyhow!("CSRF token not found in session"))?;
-    if info.state != csrf_token {
+    if query.state != csrf_token {
         anyhow::bail!("Invalid state: CSRF token does not match");
     }
     let pkce_code_verifier = session
-        .get::<PkceCodeVerifier>("pkce_code_verifier")?
+        .get::<PkceCodeVerifier>("pkce_code_verifier")
+        .await?
         .ok_or_else(|| anyhow::anyhow!("PKCE code verifier not found in session"))?;
     let code_verifier = pkce_code_verifier.secret();
     let res = TokenRequestBuilder::new()
-        .client_id(&data.client_id)
-        .client_secret(&data.client_secret)
+        .client_id(&state.client_id)
+        .client_secret(&state.client_secret)
         .code_verifier(code_verifier)
-        .code(&info.code)
-        .domain(&data.domain)
-        .redirect_uri(&data.redirect_uri)
-        .region(&data.region)
+        .code(&query.code)
+        .domain(&state.domain)
+        .redirect_uri(&state.redirect_uri)
+        .region(&state.region)
         .build()?
         .send()
         .await?;
     let json: serde_json::Value = res.json().await?;
     let id_token = json["id_token"].as_str().unwrap();
     let token_data = JwtDecoder::new()
-        .client_id(&data.client_id)
-        .region(&data.region)
-        .user_pool_id(&data.user_pool_id)
+        .client_id(&state.client_id)
+        .region(&state.region)
+        .user_pool_id(&state.user_pool_id)
         .decode(id_token)
         .await?;
     let claims = &token_data.claims;
     let nonce = session
-        .remove_as::<String>("nonce")
-        .ok_or_else(|| anyhow::anyhow!("Nonce not found in session"))?
-        .map_err(anyhow::Error::msg)?;
+        .remove::<String>("nonce")
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Nonce not found in session"))?;
     let issued_threshold = chrono::Duration::minutes(5);
     validate_claims(claims, &nonce, issued_threshold)?;
-    session.insert("email", claims.email.clone())?;
-    session.insert("sub", claims.sub.clone())?;
-    Ok(HttpResponse::Found()
-        .append_header(("Location", "/"))
-        .finish())
+    session.insert("email", &claims.email).await?;
+    session.insert("sub", &claims.sub).await?;
+    Ok(Redirect::to("/").into_response())
 }

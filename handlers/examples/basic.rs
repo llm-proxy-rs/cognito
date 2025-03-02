@@ -1,32 +1,25 @@
-use actix_session::{SessionMiddleware, storage::CookieSessionStore};
-use actix_web::{App, HttpResponse, HttpServer, cookie::Key, get, web};
-use anyhow::Result;
+use axum::{
+    Router,
+    extract::{Query, State},
+    http::StatusCode,
+    response::{Html, IntoResponse, Redirect, Response},
+    routing::get,
+};
 use dotenv::dotenv;
-use handlers::{AppState, CallbackRequest};
+use handlers::{AppState, CallbackQuery};
 use std::env;
-use std::fmt;
+use tower_sessions::{MemoryStore, Session, SessionManagerLayer, cookie::SameSite};
 use tracing::info;
 
-#[derive(Debug)]
 pub struct AppError(anyhow::Error);
 
-impl fmt::Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl actix_web::ResponseError for AppError {
-    fn error_response(&self) -> HttpResponse {
-        let status_code = if self.0.to_string().contains("Streaming is required") {
-            actix_web::http::StatusCode::BAD_REQUEST
-        } else {
-            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
-        };
-
-        HttpResponse::build(status_code)
-            .content_type("text/plain; charset=utf-8")
-            .body(format!("Error: {}", self.0))
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.0),
+        )
+            .into_response()
     }
 }
 
@@ -39,9 +32,8 @@ where
     }
 }
 
-#[get("/")]
-async fn index(session: actix_session::Session) -> Result<HttpResponse, AppError> {
-    let email = session.get::<String>("email").map_err(AppError::from)?;
+async fn index(session: Session) -> Result<Response, AppError> {
+    let email = session.get::<String>("email").await?;
 
     let html = match email {
         Some(email) => format!(
@@ -70,39 +62,28 @@ async fn index(session: actix_session::Session) -> Result<HttpResponse, AppError
         .to_string(),
     };
 
-    Ok(HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html))
+    Ok(Html(html).into_response())
 }
 
-#[get("/logout")]
-async fn logout(session: actix_session::Session) -> Result<HttpResponse, AppError> {
-    session.purge();
-
-    Ok(HttpResponse::Found()
-        .append_header(("Location", "/"))
-        .finish())
+async fn logout(session: Session) -> Result<Response, AppError> {
+    session.delete().await?;
+    Ok(Redirect::to("/").into_response())
 }
 
-async fn login(
-    data: web::Data<AppState>,
-    session: actix_session::Session,
-) -> Result<HttpResponse, AppError> {
-    handlers::login(data, session).await.map_err(AppError::from)
+async fn login(session: Session, state: State<AppState>) -> Result<Response, AppError> {
+    Ok(handlers::login(session, state).await?)
 }
 
 async fn callback(
-    data: web::Data<AppState>,
-    info: web::Query<CallbackRequest>,
-    session: actix_session::Session,
-) -> Result<HttpResponse, AppError> {
-    handlers::callback(data, session, info)
-        .await
-        .map_err(AppError::from)
+    query: Query<CallbackQuery>,
+    session: Session,
+    state: State<AppState>,
+) -> Result<Response, AppError> {
+    Ok(handlers::callback(query, session, state).await?)
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     tracing_subscriber::fmt::init();
@@ -115,33 +96,31 @@ async fn main() -> std::io::Result<()> {
     let redirect_uri = env::var("COGNITO_REDIRECT_URI").expect("COGNITO_REDIRECT_URI must be set");
     let domain = env::var("COGNITO_DOMAIN").expect("COGNITO_DOMAIN must be set");
 
-    let app_state = web::Data::new(AppState {
+    let state = AppState {
         client_id,
         client_secret,
         domain,
         redirect_uri,
         region,
         user_pool_id,
-    });
-
-    let secret_key = Key::generate();
+    };
 
     info!("Server running at http://localhost:8080");
 
-    HttpServer::new(move || {
-        App::new()
-            .app_data(app_state.clone())
-            .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
-                    .cookie_secure(false)
-                    .build(),
-            )
-            .service(index)
-            .service(logout)
-            .route("/login", web::get().to(login))
-            .route("/callback", web::get().to(callback))
-    })
-    .bind("127.0.0.1:8080")?
-    .run()
-    .await
+    let session_store = MemoryStore::default();
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_same_site(SameSite::Lax)
+        .with_secure(false);
+
+    let app = Router::new()
+        .layer(session_layer)
+        .route("/", get(index))
+        .route("/callback", get(callback))
+        .route("/login", get(login))
+        .route("/logout", get(logout))
+        .with_state(state);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
+    axum::serve(listener, app).await?;
+    Ok(())
 }
