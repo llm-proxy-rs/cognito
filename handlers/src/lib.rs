@@ -68,7 +68,9 @@ pub async fn callback(
         .send()
         .await?;
     let json: serde_json::Value = res.json().await?;
-    let id_token = json["id_token"].as_str().unwrap();
+    let id_token = json["id_token"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("ID token not found"))?;
     let token_data = JwtDecoder::new()
         .client_id(&state.client_id)
         .region(&state.region)
