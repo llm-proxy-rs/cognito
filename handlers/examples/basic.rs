@@ -66,7 +66,7 @@ async fn index(session: Session) -> Result<Response, AppError> {
 }
 
 async fn logout(session: Session) -> Result<Response, AppError> {
-    session.delete().await?;
+    session.remove::<String>("email").await?;
     Ok(Redirect::to("/").into_response())
 }
 
