@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.96"
-chrono = "0.4.40"
-jsonwebtoken = "9.3.1"
+anyhow = "1.0.100"
+chrono = "0.4.43"
+jsonwebtoken = "10.3.0"
 jwks = { path = "../jwks" }
-serde = "1.0.218"
+serde = "1.0.228"
 validation = { path = "../validation" }
