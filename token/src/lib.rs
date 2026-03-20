@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 #[derive(Default)]
@@ -52,16 +52,14 @@ impl TokenRequestBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<reqwest::RequestBuilder> {
+    pub fn build(self) -> Result<reqwest::RequestBuilder> {
         if self.client_id.is_empty()
             || self.client_secret.is_empty()
             || self.domain.is_empty()
             || self.redirect_uri.is_empty()
             || self.region.is_empty()
         {
-            anyhow::bail!(
-                "client_id, client_secret, domain, redirect_uri, and region must not be empty"
-            );
+            bail!("client_id, client_secret, domain, redirect_uri, and region must not be empty");
         }
 
         let url = format!(
@@ -71,15 +69,110 @@ impl TokenRequestBuilder {
 
         let basic = STANDARD.encode(format!("{}:{}", self.client_id, self.client_secret));
 
+        let grant_type = "authorization_code".to_string();
+        let form_params = vec![
+            ("code_verifier", &self.code_verifier),
+            ("code", &self.code),
+            ("grant_type", &grant_type),
+            ("redirect_uri", &self.redirect_uri),
+        ];
+
         Ok(reqwest::Client::new()
             .post(url)
             .header("Authorization", format!("Basic {}", basic))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .form(&[
-                ("code_verifier", &self.code_verifier),
-                ("code", &self.code),
-                ("grant_type", &"authorization_code".to_string()),
-                ("redirect_uri", &self.redirect_uri),
-            ]))
+            .form(&form_params))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_builder() -> TokenRequestBuilder {
+        TokenRequestBuilder::new()
+            .client_id("test-client")
+            .client_secret("test-secret")
+            .domain("mypool")
+            .region("us-east-1")
+            .redirect_uri("https://example.com/callback")
+            .code("auth-code-123")
+    }
+
+    #[test]
+    fn build_succeeds_with_all_required_fields() {
+        let result = base_builder().build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_succeeds_without_code_verifier() {
+        let result = base_builder().build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_succeeds_with_code_verifier() {
+        let result = base_builder().code_verifier("pkce-verifier").build();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn build_fails_when_client_id_empty() {
+        let result = TokenRequestBuilder::new()
+            .client_secret("test-secret")
+            .domain("mypool")
+            .region("us-east-1")
+            .redirect_uri("https://example.com/callback")
+            .code("auth-code")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_fails_when_client_secret_empty() {
+        let result = TokenRequestBuilder::new()
+            .client_id("test-client")
+            .domain("mypool")
+            .region("us-east-1")
+            .redirect_uri("https://example.com/callback")
+            .code("auth-code")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_fails_when_domain_empty() {
+        let result = TokenRequestBuilder::new()
+            .client_id("test-client")
+            .client_secret("test-secret")
+            .region("us-east-1")
+            .redirect_uri("https://example.com/callback")
+            .code("auth-code")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_fails_when_region_empty() {
+        let result = TokenRequestBuilder::new()
+            .client_id("test-client")
+            .client_secret("test-secret")
+            .domain("mypool")
+            .redirect_uri("https://example.com/callback")
+            .code("auth-code")
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_fails_when_redirect_uri_empty() {
+        let result = TokenRequestBuilder::new()
+            .client_id("test-client")
+            .client_secret("test-secret")
+            .domain("mypool")
+            .region("us-east-1")
+            .code("auth-code")
+            .build();
+        assert!(result.is_err());
     }
 }

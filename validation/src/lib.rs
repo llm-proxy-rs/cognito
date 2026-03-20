@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use jsonwebtoken::{Algorithm, Validation};
 
 #[derive(Default)]
@@ -30,7 +30,7 @@ impl ValidationBuilder {
 
     pub fn build(self) -> Result<Validation> {
         if self.client_id.is_empty() || self.region.is_empty() || self.user_pool_id.is_empty() {
-            anyhow::bail!("client_id, region, and user_pool_id must not be empty");
+            bail!("client_id, region, and user_pool_id must not be empty");
         }
 
         let issuer = format!(

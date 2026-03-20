@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use jsonwebtoken::DecodingKey;
 
 #[derive(serde::Deserialize)]
@@ -35,14 +35,14 @@ impl JwksBuilder {
 
     pub async fn build(self) -> Result<Jwks> {
         if self.region.is_empty() || self.user_pool_id.is_empty() {
-            anyhow::bail!("region and user_pool_id must not be empty");
+            bail!("region and user_pool_id must not be empty");
         }
 
         let url = format!(
             "https://cognito-idp.{}.amazonaws.com/{}/.well-known/jwks.json",
             self.region, self.user_pool_id
         );
-        let response = reqwest::get(&url).await?;
+        let response = reqwest::get(&url).await?.error_for_status()?;
         let jwks: Jwks = response.json().await?;
         Ok(jwks)
     }

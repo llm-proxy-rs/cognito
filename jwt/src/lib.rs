@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use chrono::TimeZone;
 use jsonwebtoken::{TokenData, decode, decode_header};
 use jwks::{Jwks, jwk_to_decoding_key};
@@ -16,9 +16,7 @@ pub struct Claims {
 
 fn get_kid_from_jwt(jwt: &str) -> Result<String> {
     let header = decode_header(jwt)?;
-    header
-        .kid
-        .ok_or(anyhow::anyhow!("kid not found in JWT header"))
+    header.kid.ok_or(anyhow!("kid not found in JWT header"))
 }
 
 #[derive(Default)]
@@ -50,7 +48,7 @@ impl JwtDecoder {
 
     pub async fn decode(&self, jwt: &str) -> Result<TokenData<Claims>> {
         if self.client_id.is_empty() || self.region.is_empty() || self.user_pool_id.is_empty() {
-            anyhow::bail!("client_id, region, and user_pool_id must not be empty");
+            bail!("client_id, region, and user_pool_id must not be empty");
         }
 
         let kid = get_kid_from_jwt(jwt)?;
@@ -59,9 +57,7 @@ impl JwtDecoder {
             .user_pool_id(&self.user_pool_id)
             .build()
             .await?;
-        let jwk = jwks
-            .find_jwk(&kid)
-            .ok_or(anyhow::anyhow!("JWK not found"))?;
+        let jwk = jwks.find_jwk(&kid).ok_or(anyhow!("JWK not found"))?;
         let validation = ValidationBuilder::new()
             .client_id(&self.client_id)
             .region(&self.region)
@@ -75,19 +71,24 @@ impl JwtDecoder {
 pub fn validate_claims(
     claims: &Claims,
     nonce: &str,
-    issued_threshold: chrono::Duration,
+    issued_threshold: chrono::TimeDelta,
 ) -> Result<()> {
     let current_time = chrono::Utc::now();
     let iat = chrono::Utc
         .timestamp_opt(claims.iat, 0)
         .single()
-        .ok_or(anyhow::anyhow!("Invalid 'iat' timestamp in claims"))?;
-    if iat < (current_time - issued_threshold)
-        || claims.nonce != nonce
-        || claims.sub.is_empty()
-        || claims.token_use != "id"
-    {
-        anyhow::bail!("Invalid claims in token");
+        .ok_or(anyhow!("Invalid 'iat' timestamp in claims"))?;
+    if iat < (current_time - issued_threshold) {
+        bail!("Token 'iat' is older than the allowed threshold");
+    }
+    if claims.nonce != nonce {
+        bail!("Token nonce does not match expected value");
+    }
+    if claims.sub.is_empty() {
+        bail!("Token 'sub' claim is empty");
+    }
+    if claims.token_use != "id" {
+        bail!("Token 'token_use' is not 'id'");
     }
     Ok(())
 }

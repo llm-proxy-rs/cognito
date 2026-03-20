@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use authorize::AuthorizeUrlBuilder;
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -45,16 +45,16 @@ pub async fn callback(
     State(state): State<AppState>,
 ) -> Result<Response> {
     let csrf_token: String = session
-        .get("csrf_token")
+        .remove("csrf_token")
         .await?
-        .ok_or_else(|| anyhow::anyhow!("CSRF token not found in session"))?;
+        .ok_or_else(|| anyhow!("CSRF token not found in session"))?;
     if query.state != csrf_token {
-        anyhow::bail!("Invalid state: CSRF token does not match");
+        bail!("Invalid state: CSRF token does not match");
     }
     let pkce_code_verifier = session
-        .get::<PkceCodeVerifier>("pkce_code_verifier")
+        .remove::<PkceCodeVerifier>("pkce_code_verifier")
         .await?
-        .ok_or_else(|| anyhow::anyhow!("PKCE code verifier not found in session"))?;
+        .ok_or_else(|| anyhow!("PKCE code verifier not found in session"))?;
     let code_verifier = pkce_code_verifier.secret();
     let res = TokenRequestBuilder::new()
         .client_id(&state.client_id)
@@ -66,11 +66,12 @@ pub async fn callback(
         .region(&state.region)
         .build()?
         .send()
-        .await?;
+        .await?
+        .error_for_status()?;
     let json: serde_json::Value = res.json().await?;
     let id_token = json["id_token"]
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("ID token not found"))?;
+        .ok_or_else(|| anyhow!("ID token not found"))?;
     let token_data = JwtDecoder::new()
         .client_id(&state.client_id)
         .region(&state.region)
@@ -81,8 +82,8 @@ pub async fn callback(
     let nonce = session
         .remove::<String>("nonce")
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Nonce not found in session"))?;
-    let issued_threshold = chrono::Duration::minutes(5);
+        .ok_or_else(|| anyhow!("Nonce not found in session"))?;
+    let issued_threshold = chrono::TimeDelta::minutes(5);
     validate_claims(claims, &nonce, issued_threshold)?;
     session.insert("email", &claims.email).await?;
     session.insert("sub", &claims.sub).await?;

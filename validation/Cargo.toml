@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
